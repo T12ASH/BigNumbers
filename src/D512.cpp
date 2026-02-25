@@ -146,6 +146,8 @@ D512::D512(D512&& other) noexcept {
     other.isNaN = false;
 }
 
+D512::~D512() noexcept = default;
+
 // Заглушки
 
 bool D512::operator==(const D512& other) const noexcept {
@@ -241,19 +243,35 @@ std::string D512::toString() const {
     if (isNaN) return "NaN";
     if (isZero()) return "0";
     
-    // TODO: Реализовать полное преобразование
-    // Пока заглушка
-    std::string result;
-    if (negative) result += "-";
-    result += std::to_string(words[0]);
+    // Работаем с копией числа (абсолютное значение)
+    D512 temp = *this;
+    temp.negative = false;
     
-    // Если есть старшие слова, добавляем предупреждение
-    for (int i = 1; i < WORD_COUNT; ++i) {
-        if (words[i] != 0) {
-            result += "... (обрезка)";
-            break;
+    std::string result;
+    
+    // Пока число не станет нулем
+    while (!temp.isZero()) {
+        // Делим на 10, получаем остаток
+        uint64_t remainder = 0;
+        
+        // Деление всего 512-битного числа на 10
+        for (int i = WORD_COUNT - 1; i >= 0; --i) {
+            uint64_t current = temp.words[i] + (remainder << 32); // Объединяем с остатком
+            temp.words[i] = current / 10;
+            remainder = current % 10;
         }
+        
+        // Добавляем цифру в строку
+        result.push_back('0' + static_cast<char>(remainder));
     }
+    
+    // Добавляем знак минус если нужно
+    if (negative) {
+        result.push_back('-');
+    }
+    
+    // Переворачиваем строку (мы собирали цифры с конца)
+    std::reverse(result.begin(), result.end());
     
     return result;
 }
@@ -349,4 +367,11 @@ D512 D512::operator/(const D512& other) const {
 D512& D512::operator+=(const D512& other) {
     *this = *this + other;
     return *this;
+}
+
+bool D512::isZero() const noexcept {
+    for (int i = 0; i < WORD_COUNT; ++i) {
+        if (words[i] != 0) return false;
+    }
+    return true;
 }
