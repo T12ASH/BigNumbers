@@ -239,43 +239,6 @@ D512 D512::operator--(int) {
 }
 
 
-std::string D512::toString() const {
-    if (isNaN) return "NaN";
-    if (isZero()) return "0";
-    
-    // Работаем с копией числа (абсолютное значение)
-    D512 temp = *this;
-    temp.negative = false;
-    
-    std::string result;
-    
-    // Пока число не станет нулем
-    while (!temp.isZero()) {
-        // Делим на 10, получаем остаток
-        uint64_t remainder = 0;
-        
-        // Деление всего 512-битного числа на 10
-        for (int i = WORD_COUNT - 1; i >= 0; --i) {
-            uint64_t current = temp.words[i] + (remainder << 32); // Объединяем с остатком
-            temp.words[i] = current / 10;
-            remainder = current % 10;
-        }
-        
-        // Добавляем цифру в строку
-        result.push_back('0' + static_cast<char>(remainder));
-    }
-    
-    // Добавляем знак минус если нужно
-    if (negative) {
-        result.push_back('-');
-    }
-    
-    // Переворачиваем строку (мы собирали цифры с конца)
-    std::reverse(result.begin(), result.end());
-    
-    return result;
-}
-
 D512::operator int64_t() const noexcept {
     return static_cast<int64_t>(negative ? -words[0] : words[0]);
 }
@@ -374,4 +337,45 @@ bool D512::isZero() const noexcept {
         if (words[i] != 0) return false;
     }
     return true;
+}
+
+std::string D512::toString() const {
+    if (isNaN) return "NaN";
+    if (isZero()) return "0";
+    
+    D512 temp = *this;
+    temp.negative = false;
+    std::string result;
+    
+    while (!temp.isZero()) {
+        uint64_t remainder = 0;
+        
+        // Делим число на 10
+        for (int i = WORD_COUNT - 1; i >= 0; --i) {
+            uint64_t part = temp.words[i];
+            
+            // Делим 64-битное слово на 10 с учетом остатка
+            // Используем тот факт, что 2^64 / 10 примерно 1844674407370955161
+            uint64_t quotient = 0;
+            uint64_t rem = remainder;
+            
+            // Эмуляция 128-битного деления через 64-битные операции
+            for (int bit = 63; bit >= 0; --bit) {
+                rem = (rem << 1) | ((part >> bit) & 1);
+                if (rem >= 10) {
+                    rem -= 10;
+                    quotient |= (1ULL << bit);
+                }
+            }
+            
+            temp.words[i] = quotient;
+            remainder = rem;
+        }
+        
+        result.push_back('0' + static_cast<char>(remainder));
+    }
+    
+    if (negative) result.push_back('-');
+    std::reverse(result.begin(), result.end());
+    return result;
 }
