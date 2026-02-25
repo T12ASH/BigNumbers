@@ -1,0 +1,31 @@
+
+# Сборка
+build/
+cmake-build-*/
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.dylib
+*.a
+*.lib
+
+# Редакторы
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Системные файлы
+.DS_Store
+Thumbs.db
+
+# Результаты тестов
+test_output/
+*.log
+
+# Временные файлы
+tmp/
+temp/
