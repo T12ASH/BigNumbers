@@ -3,76 +3,7 @@
 #include <sstream>
 #include <iomanip>
 #include <stdexcept>
-
-// Впомогательный метод (Парсинг строк) _______________
-
-void D512::multiply64(uint64_t a, uint64_t b, uint64_t& low, uint64_t& high) {
-    // Разбиваем на 32-битные половинки
-    uint64_t a_low = a & 0xFFFFFFFF;
-    uint64_t a_high = a >> 32;
-    uint64_t b_low = b & 0xFFFFFFFF;
-    uint64_t b_high = b >> 32;
-    
-    // Умножаем половинки
-    uint64_t p1 = a_low * b_low;
-    uint64_t p2 = a_low * b_high;
-    uint64_t p3 = a_high * b_low;
-    uint64_t p4 = a_high * b_high;
-    
-    // Собираем результат
-    uint64_t mid = p2 + (p1 >> 32);
-    uint64_t mid_low = mid & 0xFFFFFFFF;
-    uint64_t mid_high = mid >> 32;
-    
-    low = (p1 & 0xFFFFFFFF) | (mid_low << 32);
-    high = p4 + mid_high + (p3 >> 32) + ((p3 & 0xFFFFFFFF) + (mid_low >> 32) > 0xFFFFFFFF ? 1 : 0);
-}
-
-void D512::multiplyBy10() {
-    uint64_t carry = 0;
-    
-    for (int i = 0; i < WORD_COUNT; ++i) {
-        uint64_t low, high;
-        multiply64(words[i], 10, low, high);
-        
-        // Прибавляем перенос от предыдущего слова
-        uint64_t sum = low + carry;
-        bool overflow = (sum < low);  // было переполнение при сложении?
-        
-        words[i] = sum;
-        carry = high + (overflow ? 1 : 0);
-    }
-    
-    // Если после всех слов остался перенос - число не влезло в 512 бит
-    if (carry != 0) {
-        isNaN = true;
-        throw std::overflow_error("D512: число слишком большое (переполнение при умножении на 10)");
-    }
-}
-
-void D512::addDigit(uint64_t digit) {
-    if (digit > 9) return;  // защита от дурака
-    
-    uint64_t carry = digit;
-    
-    for (int i = 0; i < WORD_COUNT && carry != 0; ++i) {
-        uint64_t sum = words[i] + carry;
-        
-        if (sum < words[i]) {  // было переполнение
-            carry = 1;
-        } else {
-            carry = 0;
-        }
-        
-        words[i] = sum;
-    }
-    
-    // Если после всех слов остался перенос - число не влезло
-    if (carry != 0) {
-        isNaN = true;
-        throw std::overflow_error("D512: число слишком большое (переполнение при добавлении цифры)");
-    }
-}
+#include <vector>
 
 // Конструкторы _______________________________________
 
@@ -82,50 +13,100 @@ D512::D512(int64_t value) noexcept : negative(value < 0) {
 }
 
 D512::D512(const std::string& str) {
+    // 1. Проверка на пустую строку
     if (str.empty()) {
         isNaN = true;
         throw std::invalid_argument("D512: пустая строка");
     }
     
     size_t start = 0;
+    negative = false;
+    
+    // 2. Проверка первого символа на минус
     if (str[0] == '-') {
         negative = true;
         start = 1;
+        
+        // 3. После минуса должны быть цифры
+        if (start >= str.length()) {
+            isNaN = true;
+            throw std::invalid_argument("D512: после минуса нет цифр");
+        }
     }
     
-    // Проверка на пустую строку после знака
-    if (start >= str.length()) {
-        isNaN = true;
-        throw std::invalid_argument("D512: строка содержит только знак минус");
+    // 4. Проверка что первый символ после знака - не ноль
+    if (str[start] == '0') {
+        // Если это единственный символ - ок (число 0)
+        if (str.length() - start > 1) {
+            isNaN = true;
+            throw std::invalid_argument("D512: число не может начинаться с нуля");
+        }
     }
     
-    // Проверка, что все символы - цифры
+    // 5. Проверка всех символов - только цифры
     for (size_t i = start; i < str.length(); ++i) {
         if (!std::isdigit(str[i])) {
             isNaN = true;
-            throw std::invalid_argument("D512: недопустимый символ в строке");
+            throw std::invalid_argument("D512: недопустимый символ '" + std::string(1, str[i]) + "' - нужны только цифры");
         }
     }
     
-    try {
-        // Обрабатываем каждую цифру
-        for (size_t i = start; i < str.length(); ++i) {
-            uint64_t digit = str[i] - '0';
-            
-            // Умножаем текущее число на 10
-            multiplyBy10();
-            
-            // Прибавляем цифру
-            addDigit(digit);
+    // 6. Доп проверка - нет ли второго минуса где-то внутри
+    for (size_t i = start; i < str.length(); ++i) {
+        if (str[i] == '-') {
+            isNaN = true;
+            throw std::invalid_argument("D512: минус может быть только первым символом");
         }
-    } catch (const std::overflow_error& e) {
+    }
+    
+    // Парсинг числа
+    std::string digits = str.substr(start);
+    
+    // Если число "0" - сразу выходим
+    if (digits == "0") {
+        negative = false;  // -0 не бывает
+        return;
+    }
+    
+    std::vector<uint8_t> bits;
+    
+    while (digits != "0") {
+        int remainder = (digits.back() - '0') % 2;
+        bits.push_back(static_cast<uint8_t>(remainder));
+        
+        std::string next;
+        int carry = 0;
+        for (char c : digits) {
+            int current = carry * 10 + (c - '0');
+            int digit = current / 2;
+            carry = current % 2;
+            
+            if (!next.empty() || digit != 0) {
+                next.push_back('0' + digit);
+            }
+        }
+        
+        digits = next.empty() ? "0" : next;
+        
+        // Защита от бесконечного цикла
+        if (bits.size() > WORD_BITS * WORD_COUNT + 1) {
+            isNaN = true;
+            throw std::overflow_error("D512: число слишком большое");
+        }
+    }
+    
+    if (bits.size() > WORD_BITS * WORD_COUNT) {
         isNaN = true;
-        throw;  // пробрасываем исключение дальше
+        throw std::overflow_error("D512: число превышает 512 бит");
     }
     
-    // Если получился ноль, сбрасываем флаг отрицательности
-    if (isZero()) {
-        negative = false;
+    // Заполняем слова
+    for (size_t i = 0; i < bits.size(); ++i) {
+        if (bits[i]) {
+            size_t word_idx = i / WORD_BITS;
+            size_t bit_idx = i % WORD_BITS;
+            words[word_idx] |= (1ULL << bit_idx);
+        }
     }
 }
 
