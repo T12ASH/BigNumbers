@@ -132,6 +132,9 @@ public:
     // Для C++/CLI ________________________________________
     const uint64_t* getWords() const noexcept { return words; }
     int getWordCount() const noexcept { return WORD_COUNT; }
+
+    friend std::ostream& operator<<(std::ostream& os, const D512& obj);
+    friend std::istream& operator>>(std::istream& is, D512& obj);
 };
 // Глобальные операторы ___________________________________
 std::ostream& operator<<(std::ostream& os, const D512& obj);
