@@ -7,12 +7,13 @@
 #include <cstdint>
 #include <cstring>
 #include <algorithm>
+#include <vector>
 
 /**
  * @class D512
  * @brief Класс для работы с 512-битными целыми числами
  * 
- * Хранение: массив из 8 64-битных слов (little-endian)
+ * Хранение: массив из 8 64-битных слов
  * words[0] - младшие 64 бита
  * words[7] - старшие 64 бита
  */
@@ -21,7 +22,7 @@ class D512 {
     static constexpr int WORD_COUNT{8};              // 8 * 64 = 512 бит
     static constexpr int BYTE_COUNT{64};             // 512 / 8 = 64 байта
 
-    uint64_t words[WORD_COUNT]{0,0,0,0};             // 8 слов по 64 бита
+    uint64_t words[WORD_COUNT]{0,0,0,0,0,0,0,0};     // 8 слов по 64 бита
     bool negative{false};                            // Флаг знака (true - отрицательное)
     bool isNaN{false};                               // Флаг ошибки (true - не число)
 public:
@@ -36,7 +37,7 @@ public:
      * @brief Конструктор от 64-битного целого
      * @param value целое число
      */
-    explicit D512(int64_t value) noexcept;
+    D512(int64_t value) noexcept;
     
     /**
      * @brief Конструктор от строки

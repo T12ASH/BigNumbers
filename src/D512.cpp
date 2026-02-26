@@ -3,7 +3,7 @@
 #include <sstream>
 #include <iomanip>
 #include <stdexcept>
-#include <vector>
+
 
 // Конструкторы _______________________________________
 
@@ -129,7 +129,48 @@ D512::D512(D512&& other) noexcept {
 
 D512::~D512() noexcept = default;
 
-// Заглушки
+std::string D512::toString() const {
+    if (isNaN) return "NaN";
+    if (isZero()) return "0";
+    
+    D512 temp = *this;
+    temp.negative = false;
+    std::string result;
+    
+    while (!temp.isZero()) {
+        uint64_t remainder = 0;
+        
+        // Делим число на 10
+        for (int i = WORD_COUNT - 1; i >= 0; --i) {
+            uint64_t part = temp.words[i];
+            
+            // Делим 64-битное слово на 10 с учетом остатка
+            // Используем тот факт, что 2^64 / 10 примерно 1844674407370955161
+            uint64_t quotient = 0;
+            uint64_t rem = remainder;
+            
+            // Эмуляция 128-битного деления через 64-битные операции
+            for (int bit = 63; bit >= 0; --bit) {
+                rem = (rem << 1) | ((part >> bit) & 1);
+                if (rem >= 10) {
+                    rem -= 10;
+                    quotient |= (1ULL << bit);
+                }
+            }
+            
+            temp.words[i] = quotient;
+            remainder = rem;
+        }
+        
+        result.push_back('0' + static_cast<char>(remainder));
+    }
+    
+    if (negative) result.push_back('-');
+    std::reverse(result.begin(), result.end());
+    return result;
+}
+
+
 
 bool D512::operator==(const D512& other) const noexcept {
     if (isNaN || other.isNaN) return false;
@@ -186,7 +227,7 @@ D512 D512::operator-() const noexcept {
 D512 D512::operator+() const noexcept {
     return *this;
 }
-
+// Заглушки
 
 D512& D512::operator++() {
     // TODO: Реализовать инкремент с учетом переноса
@@ -278,19 +319,100 @@ std::istream& operator>>(std::istream& is, D512& obj) {
     return is;
 }
 
-
-
 D512 D512::operator+(const D512& other) const {
-    // Заглушка - TODO: реализовать
+    if (isNaN || other.isNaN) {
+        D512 result;
+        result.isNaN = true;
+        return result;
+    }
+    
+    // Разные знаки - вызываем вычитание
+    if (negative != other.negative) {
+        D512 temp = other;
+        temp.negative = !temp.negative;
+        return *this - temp;
+    }
+    
     D512 result;
-    result.isNaN = true;
+    uint64_t carry = 0;
+    
+    for (int i = 0; i < WORD_COUNT; ++i) {
+        uint64_t sum = words[i] + other.words[i] + carry;
+        
+        // Проверка переполнения
+        if (sum < words[i] || (carry && sum == words[i])) {
+            carry = 1;
+        } else {
+            carry = 0;
+        }
+        
+        result.words[i] = sum;
+    }
+    
+    result.negative = negative;
+    
+    if (carry) {
+        result.isNaN = true;  // Переполнение 512 бит
+    }
+    
     return result;
 }
 
 D512 D512::operator-(const D512& other) const {
-    // Заглушка
+    if (isNaN || other.isNaN) {
+        D512 result;
+        result.isNaN = true;
+        return result;
+    }
+    
+    // Разные знаки
+    if (negative != other.negative) {
+        D512 temp = other;
+        temp.negative = !temp.negative;
+        return *this + temp;
+    }
+    
+    // Сравниваем абсолютные значения
+    bool absLess = false;
+    for (int i = WORD_COUNT - 1; i >= 0; --i) {
+        if (words[i] != other.words[i]) {
+            absLess = words[i] < other.words[i];
+            break;
+        }
+    }
+    
+    // Определяем знак результата
+    bool resultNegative = negative ? !absLess : absLess;
+    
+    // Выбираем большее и меньшее
+    const D512* larger;
+    const D512* smaller;
+    
+    if (absLess) {
+        larger = &other;
+        smaller = this;
+    } else {
+        larger = this;
+        smaller = &other;
+    }
+    
     D512 result;
-    result.isNaN = true;
+    uint64_t borrow = 0;
+    
+    for (int i = 0; i < WORD_COUNT; ++i) {
+        uint64_t diff = larger->words[i] - smaller->words[i] - borrow;
+        
+        if (diff > larger->words[i] || (borrow && diff == larger->words[i])) {
+            borrow = 1;
+        } else {
+            borrow = 0;
+        }
+        
+        result.words[i] = diff;
+    }
+    
+    result.negative = resultNegative;
+    
     return result;
 }
 
@@ -313,6 +435,11 @@ D512& D512::operator+=(const D512& other) {
     return *this;
 }
 
+D512& D512::operator-=(const D512& other) {
+    *this = *this - other;
+    return *this;
+}
+
 bool D512::isZero() const noexcept {
     for (int i = 0; i < WORD_COUNT; ++i) {
         if (words[i] != 0) return false;
@@ -320,43 +447,3 @@ bool D512::isZero() const noexcept {
     return true;
 }
 
-std::string D512::toString() const {
-    if (isNaN) return "NaN";
-    if (isZero()) return "0";
-    
-    D512 temp = *this;
-    temp.negative = false;
-    std::string result;
-    
-    while (!temp.isZero()) {
-        uint64_t remainder = 0;
-        
-        // Делим число на 10
-        for (int i = WORD_COUNT - 1; i >= 0; --i) {
-            uint64_t part = temp.words[i];
-            
-            // Делим 64-битное слово на 10 с учетом остатка
-            // Используем тот факт, что 2^64 / 10 примерно 1844674407370955161
-            uint64_t quotient = 0;
-            uint64_t rem = remainder;
-            
-            // Эмуляция 128-битного деления через 64-битные операции
-            for (int bit = 63; bit >= 0; --bit) {
-                rem = (rem << 1) | ((part >> bit) & 1);
-                if (rem >= 10) {
-                    rem -= 10;
-                    quotient |= (1ULL << bit);
-                }
-            }
-            
-            temp.words[i] = quotient;
-            remainder = rem;
-        }
-        
-        result.push_back('0' + static_cast<char>(remainder));
-    }
-    
-    if (negative) result.push_back('-');
-    std::reverse(result.begin(), result.end());
-    return result;
-}
