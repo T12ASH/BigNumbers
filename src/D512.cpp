@@ -1,8 +1,43 @@
-// src/D512.cpp
 #include "../include/D512.hpp"
 #include <sstream>
 #include <iomanip>
 #include <stdexcept>
+#include <cstring>
+
+// Вспомогательные методы _____________________________
+
+void D512::mul64by10(uint64_t a, uint64_t& low, uint64_t& high) {
+    uint64_t a_low = a & 0xFFFFFFFF;
+    uint64_t a_high = a >> 32;
+
+    uint64_t p_low = a_low * 10;
+    uint64_t p_high = a_high * 10;
+
+    uint64_t carry = p_low >> 32;
+    uint64_t mid = (p_high & 0xFFFFFFFF) + carry;
+
+    high = (p_high >> 32) + (mid >> 32);
+    low = ((mid & 0xFFFFFFFF) << 32) | (p_low & 0xFFFFFFFF);
+}
+
+void D512::div128by10(uint64_t high, uint64_t low,
+    uint64_t& quotient_high, uint64_t& quotient_low,
+    uint64_t& remainder) {
+
+    uint64_t q_high = high / 10;
+    uint64_t r_high = high % 10;
+
+    uint64_t mid1 = (r_high << 32) | (low >> 32);
+    uint64_t q_mid1 = mid1 / 10;
+    uint64_t r_mid1 = mid1 % 10;
+
+    uint64_t mid2 = (r_mid1 << 32) | (low & 0xFFFFFFFF);
+    uint64_t q_mid2 = mid2 / 10;
+    remainder = mid2 % 10;
+
+    quotient_high = q_high;
+    quotient_low = (q_mid1 << 32) | q_mid2;
+}
 
 
 // Конструкторы _______________________________________
@@ -13,100 +48,76 @@ D512::D512(int64_t value) noexcept : negative(value < 0) {
 }
 
 D512::D512(const std::string& str) {
-    // 1. Проверка на пустую строку
+    // 1. Сброс состояния
+    negative = false;
+    isNaN = false;
+    std::memset(words, 0, sizeof(words));
+    
+    // 2. Проверка на пустую строку
     if (str.empty()) {
         isNaN = true;
         throw std::invalid_argument("D512: пустая строка");
     }
     
     size_t start = 0;
-    negative = false;
     
-    // 2. Проверка первого символа на минус
+    // 3. Обработка знака
     if (str[0] == '-') {
         negative = true;
         start = 1;
         
-        // 3. После минуса должны быть цифры
         if (start >= str.length()) {
             isNaN = true;
             throw std::invalid_argument("D512: после минуса нет цифр");
         }
     }
     
-    // 4. Проверка что первый символ после знака - не ноль
-    if (str[start] == '0') {
-        // Если это единственный символ - ок (число 0)
-        if (str.length() - start > 1) {
-            isNaN = true;
-            throw std::invalid_argument("D512: число не может начинаться с нуля");
-        }
+    // 4. Проверка на ведущий ноль
+    if (str[start] == '0' && str.length() - start > 1) {
+        isNaN = true;
+        throw std::invalid_argument("D512: число не может начинаться с нуля");
     }
     
-    // 5. Проверка всех символов - только цифры
+    // 5. Валидация всех символов
     for (size_t i = start; i < str.length(); ++i) {
         if (!std::isdigit(str[i])) {
             isNaN = true;
-            throw std::invalid_argument("D512: недопустимый символ '" + std::string(1, str[i]) + "' - нужны только цифры");
+            throw std::invalid_argument("D512: недопустимый символ '" + std::string(1, str[i]) + "'");
         }
-    }
-    
-    // 6. Доп проверка - нет ли второго минуса где-то внутри
-    for (size_t i = start; i < str.length(); ++i) {
         if (str[i] == '-') {
             isNaN = true;
             throw std::invalid_argument("D512: минус может быть только первым символом");
         }
     }
     
-    // Парсинг числа
-    std::string digits = str.substr(start);
-    
-    // Если число "0" - сразу выходим
-    if (digits == "0") {
-        negative = false;  // -0 не бывает
+    if (str.substr(start) == "0") {
+        negative = false;
         return;
     }
     
-    std::vector<uint8_t> bits;
-    
-    while (digits != "0") {
-        int remainder = (digits.back() - '0') % 2;
-        bits.push_back(static_cast<uint8_t>(remainder));
-        
-        std::string next;
-        int carry = 0;
-        for (char c : digits) {
-            int current = carry * 10 + (c - '0');
-            int digit = current / 2;
-            carry = current % 2;
+    for (size_t i = start; i < str.length(); ++i) {
+        uint64_t digit = str[i] - '0';
+        uint64_t carry = digit;
+
+        for (int word = 0; word < WORD_COUNT; ++word) {
+            uint64_t low, high;
+            mul64by10(words[word], low, high);
             
-            if (!next.empty() || digit != 0) {
-                next.push_back('0' + digit);
-            }
+            uint64_t sum = low + carry;
+            bool overflow = (sum < low);
+            
+            words[word] = sum;
+            carry = high + (overflow ? 1 : 0);
         }
         
-        digits = next.empty() ? "0" : next;
-        
-        // Защита от бесконечного цикла
-        if (bits.size() > WORD_BITS * WORD_COUNT + 1) {
+        if (carry != 0) {
             isNaN = true;
-            throw std::overflow_error("D512: число слишком большое");
+            throw std::overflow_error("D512: число превышает 512 бит");
         }
     }
     
-    if (bits.size() > WORD_BITS * WORD_COUNT) {
-        isNaN = true;
-        throw std::overflow_error("D512: число превышает 512 бит");
-    }
-    
-    // Заполняем слова
-    for (size_t i = 0; i < bits.size(); ++i) {
-        if (bits[i]) {
-            size_t word_idx = i / WORD_BITS;
-            size_t bit_idx = i % WORD_BITS;
-            words[word_idx] |= (1ULL << bit_idx);
-        }
+    if (isZero()) {
+        negative = false;
     }
 }
 
@@ -171,6 +182,7 @@ std::string D512::toString() const {
 }
 
 
+// Операторы сравнения ________________________________
 
 bool D512::operator==(const D512& other) const noexcept {
     if (isNaN || other.isNaN) return false;
@@ -216,6 +228,8 @@ bool D512::operator>=(const D512& other) const noexcept {
 }
 
 
+// Унарные операторы __________________________________
+
 D512 D512::operator-() const noexcept {
     D512 result = *this;
     if (!result.isZero()) {
@@ -227,7 +241,9 @@ D512 D512::operator-() const noexcept {
 D512 D512::operator+() const noexcept {
     return *this;
 }
-// Заглушки
+
+
+// Инкремент/декремент ________________________________
 
 D512& D512::operator++() {
     // TODO: Реализовать инкремент с учетом переноса
@@ -261,10 +277,105 @@ D512 D512::operator--(int) {
 }
 
 
+// Битовые операторы __________________________________
+
+D512 D512::operator&(const D512& other) const noexcept {
+    D512 result;
+    for (int i = 0; i < WORD_COUNT; ++i) {
+        result.words[i] = words[i] & other.words[i];
+    }
+    result.negative = negative & other.negative;
+    result.isNaN = isNaN | other.isNaN;
+    return result;
+}
+
+D512 D512::operator|(const D512& other) const noexcept {
+    D512 result;
+    for (int i = 0; i < WORD_COUNT; ++i) {
+        result.words[i] = words[i] | other.words[i];
+    }
+    result.negative = negative | other.negative;
+    result.isNaN = isNaN | other.isNaN;
+    return result;
+}
+
+D512 D512::operator^(const D512& other) const noexcept {
+    D512 result;
+    for (int i = 0; i < WORD_COUNT; ++i) {
+        result.words[i] = words[i] ^ other.words[i];
+    }
+    result.negative = negative ^ other.negative;
+    result.isNaN = isNaN | other.isNaN;
+    return result;
+}
+
+D512 D512::operator~() const noexcept {
+    D512 result;
+    for (int i = 0; i < WORD_COUNT; ++i) {
+        result.words[i] = ~words[i];
+    }
+    result.negative = !negative;
+    result.isNaN = isNaN;
+    return result;
+}
+
+D512 D512::operator<<(int shift) const noexcept {
+    if (shift <= 0) return *this;
+    
+    D512 result;
+    int word_shift = shift / WORD_BITS;
+    int bit_shift = shift % WORD_BITS;
+    
+    if (word_shift >= WORD_COUNT) return result;
+    
+    for (int i = 0; i < WORD_COUNT - word_shift; ++i) {
+        result.words[i + word_shift] = words[i] << bit_shift;
+    }
+    
+    if (bit_shift != 0) {
+        for (int i = 0; i < WORD_COUNT - word_shift - 1; ++i) {
+            result.words[i + word_shift + 1] |= words[i] >> (WORD_BITS - bit_shift);
+        }
+    }
+    
+    result.negative = negative;
+    result.isNaN = isNaN;
+    return result;
+}
+
+D512 D512::operator>>(int shift) const noexcept {
+    if (shift <= 0) return *this;
+    
+    D512 result;
+    int word_shift = shift / WORD_BITS;
+    int bit_shift = shift % WORD_BITS;
+    
+    if (word_shift >= WORD_COUNT) return result;
+    
+    for (int i = word_shift; i < WORD_COUNT; ++i) {
+        result.words[i - word_shift] = words[i] >> bit_shift;
+    }
+    
+    if (bit_shift != 0) {
+        for (int i = word_shift + 1; i < WORD_COUNT; ++i) {
+            result.words[i - word_shift - 1] |= words[i] << (WORD_BITS - bit_shift);
+        }
+    }
+    
+    result.negative = negative;
+    result.isNaN = isNaN;
+    return result;
+}
+
+
+// Преобразования _____________________________________
+
 D512::operator int64_t() const noexcept {
     return static_cast<int64_t>(negative ? -words[0] : words[0]);
 }
 
+
+// Вспомогательные методы ____________________________
 
 void D512::printHex(std::ostream& os) const {
     std::ios_base::fmtflags flags(os.flags());
@@ -291,6 +402,7 @@ size_t D512::hash() const noexcept {
 }
 
 
+// Статические методы _______________________________
 
 D512 D512::max() noexcept {
     D512 result;
@@ -306,18 +418,7 @@ D512 D512::min() noexcept {
 }
 
 
-
-std::ostream& operator<<(std::ostream& os, const D512& obj) {
-    os << obj.toString();
-    return os;
-}
-
-std::istream& operator>>(std::istream& is, D512& obj) {
-    std::string str;
-    is >> str;
-    obj = D512(str);
-    return is;
-}
+// Арифметические операторы _________________________
 
 D512 D512::operator+(const D512& other) const {
     if (isNaN || other.isNaN) {
@@ -430,6 +531,9 @@ D512 D512::operator/(const D512& other) const {
     return result;
 }
 
+
+// Операторы с присваиванием ________________________
+
 D512& D512::operator+=(const D512& other) {
     *this = *this + other;
     return *this;
@@ -440,6 +544,9 @@ D512& D512::operator-=(const D512& other) {
     return *this;
 }
 
+
+// Проверки состояния _______________________________
+
 bool D512::isZero() const noexcept {
     for (int i = 0; i < WORD_COUNT; ++i) {
         if (words[i] != 0) return false;
@@ -447,3 +554,17 @@ bool D512::isZero() const noexcept {
     return true;
 }
 
+
+// Глобальные операторы _____________________________
+
+std::ostream& operator<<(std::ostream& os, const D512& obj) {
+    os << obj.toString();
+    return os;
+}
+
+std::istream& operator>>(std::istream& is, D512& obj) {
+    std::string str;
+    is >> str;
+    obj = D512(str);
+    return is;
+}

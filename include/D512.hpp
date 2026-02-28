@@ -25,6 +25,13 @@ class D512 {
     uint64_t words[WORD_COUNT]{0,0,0,0,0,0,0,0};     // 8 слов по 64 бита
     bool negative{false};                            // Флаг знака (true - отрицательное)
     bool isNaN{false};                               // Флаг ошибки (true - не число)
+    
+    //Вспомогательные методы
+    void mul64by10(uint64_t a, uint64_t& low, uint64_t& high);
+    void div128by10(uint64_t high, uint64_t low,
+    uint64_t& quotient_high, uint64_t& quotient_low,
+    uint64_t& remainder);
+    
 public:
 
     // Конструкторы ________________________________________
