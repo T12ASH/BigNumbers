@@ -7,7 +7,8 @@
 #include <cstdint>
 #include <cstring>
 #include <algorithm>
-#include <vector>
+
+
 
 /**
  * @class D512
@@ -17,6 +18,9 @@
  * words[0] - младшие 64 бита
  * words[7] - старшие 64 бита
  */
+
+
+
 class D512 {
     static constexpr int WORD_BITS{64};              // Бит в одном слове
     static constexpr int WORD_COUNT{8};              // 8 * 64 = 512 бит
@@ -27,11 +31,13 @@ class D512 {
     bool isNaN{false};                               // Флаг ошибки (true - не число)
     
     //Вспомогательные методы
-    void mul64by10(uint64_t a, uint64_t& low, uint64_t& high);
-    void div128by10(uint64_t high, uint64_t low,
-    uint64_t& quotient_high, uint64_t& quotient_low,
-    uint64_t& remainder);
-    
+    D512 pow(int64_t exp) const;
+    D512 karatsuba(const D512& other, int depth) const;
+    D512 karatsuba_add(const D512& other) const;
+    D512 karatsuba_sub(const D512& other) const;
+    static void mul64by10(uint64_t a, uint64_t& low, uint64_t& high);
+    static void div512by10(uint64_t* words, uint64_t& remainder);
+    static void mul64x64(uint64_t a, uint64_t b, uint64_t& low, uint64_t& high);
 public:
 
     // Конструкторы ________________________________________
@@ -114,6 +120,7 @@ public:
     
     // Проверки состояния _________________________________
     bool isZero() const noexcept;
+    bool isOne() const noexcept;
     bool isNegative() const noexcept { return negative; }
     bool isPositive() const noexcept { return !negative && !isZero(); }
     bool isNan() const noexcept { return isNaN; }
@@ -138,11 +145,8 @@ public:
     friend std::istream& operator>>(std::istream& is, D512& obj);
     
     // Для C++/CLI ________________________________________
-    const uint64_t* getWords() const noexcept { return words; }
-    int getWordCount() const noexcept { return WORD_COUNT; }
-
-    friend std::ostream& operator<<(std::ostream& os, const D512& obj);
-    friend std::istream& operator>>(std::istream& is, D512& obj);
+    // const uint64_t* getWords() const noexcept { return words; }
+    // int getWordCount() const noexcept { return WORD_COUNT; }
 };
 // Глобальные операторы ___________________________________
 std::ostream& operator<<(std::ostream& os, const D512& obj);
@@ -156,4 +160,10 @@ namespace std {
         }
     };
 }
+
+// Пользовательский литерал
+inline D512 operator""_N(const char* str, size_t len) {
+    return D512(std::string(str, len));
+}
+
 #endif
