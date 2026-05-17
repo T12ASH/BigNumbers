@@ -225,6 +225,69 @@ void D512::div512by10(uint64_t* words, uint64_t& remainder) {
 
 // Конструкторы _______________________________________
 
+D512::D512(const std::string& str, int base) : negative(false), isNaN(false) {
+    if (base < 2 || base > 36) {
+        isNaN = true;
+        throw std::invalid_argument("D512: base must be between 2 and 36");
+    }
+    if (str.empty()) {
+        isNaN = true;
+        throw std::invalid_argument("D512: empty string");
+    }
+
+    size_t start = 0;
+    if (str[0] == '-') {
+        negative = true;
+        start = 1;
+        if (start >= str.length()) {
+            isNaN = true;
+            throw std::invalid_argument("D512: no digits after sign");
+        }
+    }
+
+    std::memset(words, 0, sizeof(words));
+
+    for (size_t i = start; i < str.length(); ++i) {
+        char c = str[i];
+        uint64_t digit;
+
+        if (c >= '0' && c <= '9')
+            digit = c - '0';
+        else if (c >= 'A' && c <= 'Z')
+            digit = 10 + (c - 'A');
+        else if (c >= 'a' && c <= 'z')
+            digit = 10 + (c - 'a');
+        else {
+            isNaN = true;
+            throw std::invalid_argument("D512: invalid character");
+        }
+
+        if (digit >= static_cast<uint64_t>(base)) {
+            isNaN = true;
+            throw std::invalid_argument("D512: digit out of range for given base");
+        }
+
+        uint64_t carry = digit;
+        for (int word = 0; word < WORD_COUNT; ++word) {
+            uint64_t low, high;
+            mul64x64(words[word], static_cast<uint64_t>(base), low, high);
+
+            uint64_t sum = low + carry;
+            bool overflow = (sum < low);
+
+            words[word] = sum;
+            carry = high + (overflow ? 1 : 0);
+        }
+
+        if (carry != 0) {
+            isNaN = true;
+            throw std::overflow_error("D512: number too large for 512 bits");
+        }
+    }
+
+    if (isZero()) negative = false;
+}
+
 D512::D512(int64_t value) noexcept : negative(value < 0) {
     uint64_t absValue = static_cast<uint64_t>(value < 0 ? -value : value);
     words[0] = absValue;
@@ -901,4 +964,38 @@ bool D512::isOne() const noexcept {
         if (words[i] != 0) return false;
     }
     return words[0] == 1;
+}
+std::string D512::toBase(int base) const {
+    if (base < 2 || base > 36) {
+        throw std::invalid_argument("D512: base must be between 2 and 36");
+    }
+    if (isNaN) return "NaN";
+    if (isZero()) return "0";
+    
+    D512 temp = *this;
+    temp.negative = false;
+    D512 divisor(base);
+    std::string result;
+    
+    while (!temp.isZero()) {
+        D512 remainder = temp % divisor;
+        temp = temp / divisor;
+        
+        uint64_t digit = remainder.words[0];
+        char ch;
+        if (digit < 10) {
+            ch = '0' + static_cast<char>(digit);
+        } else {
+            ch = 'A' + static_cast<char>(digit - 10);
+        }
+        result.push_back(ch);
+    }
+    
+    std::reverse(result.begin(), result.end());
+    
+    if (negative) {
+        result = "-" + result;
+    }
+    
+    return result;
 }

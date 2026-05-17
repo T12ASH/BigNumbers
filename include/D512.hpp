@@ -58,10 +58,16 @@ public:
      * @throw std::invalid_argument если строка некорректна
      */
     explicit D512(const std::string& str);
+    /**
+     * @brief Конструктор от строки
+     * @param str строка вида "12345", "-6789" и т.д.
+     * @throw std::invalid_argument если строка некорректна или base не в [2; 26]
+     */
+    explicit D512(const std::string& str, int base);   // base от 2 до 36
     
     /**
      * @brief Конструктор копирования
-     * Сложность O(n^2) - ДОРАБОТАТЬ
+     * Сложность O(n^2) - ДОРАБОТАНО --> Теперь O(n)
      * Память    O(n)
      */
     D512(const D512& other) noexcept;
@@ -127,6 +133,7 @@ public:
     
     // Преобразования _____________________________________
     std::string toString() const;
+    std::string toBase(int base) const;   // base от 2 до 36
     explicit operator bool() const noexcept { return !isZero(); }
     explicit operator int64_t() const noexcept;  // Обрезка до 64 бит
     

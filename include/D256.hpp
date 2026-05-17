@@ -25,6 +25,7 @@ public:
     D256() noexcept = default;
     D256(int64_t value) noexcept;
     explicit D256(const std::string& str);
+    explicit D256(const std::string& str, int base);   // base от 2 до 36
     D256(const D256& other) noexcept;
     D256(D256&& other) noexcept;
     ~D256() noexcept = default;
@@ -73,6 +74,7 @@ public:
     bool isNan() const noexcept { return isNaN; }
     
     std::string toString() const;
+    std::string toBase(int base) const; 
     explicit operator bool() const noexcept { return !isZero(); }
     explicit operator int64_t() const noexcept;
     
