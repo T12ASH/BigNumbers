@@ -112,7 +112,7 @@ mkdir build
 cd build
 
 cmake .. -G "Visual Studio 17 2022"
-cmake --build ./build --config Release && ./build/Release/d512_test.exe
+cmake --build ./build --config Release
 ```
 
 ---
@@ -125,22 +125,6 @@ cd build
 
 cmake .. -G "Unix Makefiles"
 cmake --build ./build --config Release
-```
-
----
-
-# ▶️ Запуск тестов
-
-## Windows
-
-```bash
-./Release/d512_test.exe
-```
-
-## Linux / macOS
-
-```bash
-./d512_test
 ```
 
 ---
