@@ -97,7 +97,7 @@ BigIntegerLIB/
 # 🔧 Сборка
 
 ## Требования
-- C++(от 98 стандарта до 26) совместимый компилятор
+- C++17 и выше совместимый компилятор
   - MSVC 2022
   - GCC 9+
   - Clang
@@ -112,7 +112,7 @@ mkdir build
 cd build
 
 cmake .. -G "Visual Studio 17 2022"
-cmake --build ./build --config Release
+cmake --build . --config Release
 ```
 
 ---
@@ -124,7 +124,7 @@ mkdir build
 cd build
 
 cmake .. -G "Unix Makefiles"
-cmake --build ./build --config Release
+cmake --build .
 ```
 
 ---
