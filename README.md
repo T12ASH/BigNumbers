@@ -66,10 +66,6 @@
 ## 🧩 Дополнительно
 - Пользовательские литералы (`_N`)
 - Полностью ручная реализация
-- Без использования:
-  - GMP
-  - OpenSSL
-  - Boost.Multiprecision
 - Portable C++17
 
 ---
@@ -217,73 +213,6 @@ F512 e("2.718281828459045");
 std::cout << pi + e << "\n";
 std::cout << pi.toString() << "\n";
 ```
-
----
-
-# 🧠 Внутреннее устройство
-
-## Хранение числа (`D512`)
-
-```cpp
-uint64_t words[8];
-bool negative;
-bool isNaN;
-```
-
-- `words` — массив из 8 × 64 бит
-- `negative` — знак числа
-- `isNaN` — ошибка/переполнение
-
----
-
-## Парсинг строки
-
-```text
-result = 0
-
-for each character:
-    digit = value(character)
-    result = result * base + digit
-```
-
----
-
-## Конвертация в строку
-
-```text
-while number != 0:
-    remainder = number % base
-    number = number / base
-    append digit(remainder)
-
-reverse string
-```
-
----
-
-## Сложение с переносом
-
-```text
-carry = 0
-
-for i = 0..7:
-    sum = a[i] + b[i] + carry
-    carry = overflow(sum)
-```
-
----
-
-## Умножение
-
-```text
-64 × 64 → 128 бит
-
-mul64x64(a, b, low, high)
-
-дальше выполняется сложение
-с учётом переносов
-```
-
 ---
 
 # 🧪 Тестирование
@@ -303,7 +232,6 @@ mul64x64(a, b, low, high)
 - Парсинге Base2–Base36
 - Вещественных числах
 - Нормализации
-- `toString()`
 
 ---
 
